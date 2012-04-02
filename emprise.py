@@ -2,39 +2,46 @@ import logging
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
 
-def next_player():
-    print "Next Player"
-
 class Player(object):
-    log = logging.getLogger("player")
-    def activate():
-        log.info("Activated")
+    def _init_(self, name, default=False, dbus_name="<unknown>"):
+        self.name=name
+        self.next_player=None
+        self.default=default
+        self.dbus_name=dbus_name
+        self.log = logging.getLogger(name)
+        self.init()
+    def init(self):
+        pass    
+    def activate(self):
+        current_player=self
+        if self.default:
+            default_player=self
+    def next_player(self):
+        return next_player
+    def toggle(self):
+        self.log.info("Toggle")
+    def stop(self):
+        self.log.info("
+    # Remote control
     def play_clicked(self):
-        log.info( "Play clicked")
+        self.log.info( "Play clicked")
     def play_double_clicked(self):
-        log.info( "Play double-clicked")
+        self.log.info( "Play double-clicked")
     def left_clicked(self):
-        log.info( "Left clicked")
+        self.log.info( "Left clicked")
     def right_clicked(self):
-        log.info( "Right clicked")
+        self.log.info( "Right clicked")
     def up_clicked(self):
-        log.info( "Up clicked")
+        self.log.info( "Up clicked")        
     def down_clicked(self):
-        log.info( "Down clicked")                  
+        self.log.info( "Down clicked")                  
     def up_down_clicked(self):
-        log.info( "Up/Down clicked")
+        self.log.info( "Up/Down clicked")    
 
-class MprisPlayer(Player):
-    dbus_name = "<none>"
-    
-
-class Media(Player):
-    log = logging.getLogger("media_player")
-    def __init__(self):            
+class XMBC(Player):
+    def init(self):            
         import virtkey
         self.v = virtkey.virtkey()
-    def activate():
-        log.info("Media Center activated")
     def _click(self, keysym):
         self.v.press_keysym(keysym)
         self.v.release_keysym(keysym)
@@ -52,6 +59,17 @@ class Media(Player):
         self._click(0xFF54)
     def up_down_clicked(self):
         self._click(0x078) # STOP
-        next_player()
-    
+        self.next_player().activate()
+    def next_player():
+        return default_player
 
+players = { 'banshee' : Player('banshee', default=True, dbus_name="org.mpris.banshee"),
+   'radio': Player('radio'), default=True, dbus_name="org.mpris.xmms2"),
+   'xbmc': Player('xbmc'), dbus_name="org.mpris.xbmc") }
+
+players['banshee'].next_player = players['radio']
+players['radio'].next_player = players['banshee']
+
+current_player = players['radio']
+
+current_player.activate()
