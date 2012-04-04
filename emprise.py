@@ -18,7 +18,7 @@ class Receiver(object):
     def Q(self):
         Player.current_player.play_clicked()
     def W(self):
-        Player.current_player.play_double_clicked()
+        Player.current_player.left_right_clicked()
     def A(self):
         Player.current_player.left_clicked()
     def S(self):
@@ -39,29 +39,45 @@ class Player(object):
         self.default=default
         self.dbus_name=dbus_name
         self.log = logging.getLogger(name)
+        self.commander = None
         self.init()
     def init(self):
-        pass    
+        pass
     def activate(self):
         self.log.info("Activating %s", self.name)
         Player.current_player=self
         if self.default:
             Player.default_player=self
+    def play(self):
+        self.log.info("Play")        
+        self.get_commander().play()
     def toggle(self):
         self.log.info("Toggle")
+        self.get_commander().playpause()
     def stop(self):
         self.log.info("Stop")
+        self.get_commander().stop()        
     def previous(self):
         self.log.info("Previous")
+        self.get_commander().prev()
     def next(self):
         self.log.info("Next")
+        self.get_commander().next()
 
+    def get_commander(self):
+        if self.commander is None:
+            import dbus
+            import mpris_remote
+            try:        
+                self.commander = mpris_remote.Commander2(dbus.SessionBus(), self.dbus_name)
+            except SystemExit:
+                raise Exception("Could not create commander")
     # Remote control
     def play_clicked(self):
         self.log.info( "Play clicked")
         self.toggle()
-    def play_double_clicked(self):
-        self.log.info( "Play double-clicked")        
+    def left_right_clicked(self):
+        self.log.info( "Left+Right clicked")        
     def left_clicked(self):
         self.log.info( "Left clicked")
         self.previous()
@@ -71,11 +87,12 @@ class Player(object):
     def up_clicked(self):
         self.log.info( "Up clicked")   
         self.stop()
-        self.next_player.activate()     
+        self.next_player.activate()   
+        self.next_player.play()             
     def down_clicked(self):
         self.log.info( "Down clicked") 
     def up_down_clicked(self):
-        self.log.info( "Up/Down clicked")    
+        self.log.info( "Up+Down clicked")    
         players['xbmc'].activate()
 
 '''Special control for XBMC'''
@@ -88,7 +105,7 @@ class XBMC(Player):
         self.v.release_keysym(keysym)
     def play_clicked(self):
         self._click(0xFF0D) # Enter
-    def play_double_clicked(self):
+    def left_right_clicked(self):
         self._click(0xFF08) # Backspace
     def left_clicked(self):
         self._click(0xFF51) # Left
@@ -101,7 +118,8 @@ class XBMC(Player):
     def up_down_clicked(self):
         self._click(0x078) # X (STOP)
         self.log.info("Back to %s", Player.default_player.name)
-        Player.default_player.activate()
+        Player.default_player.activate()        
+        Player.default_player.play()                
 
 players = { 'banshee' : Player('banshee', default=True, dbus_name="org.mpris.banshee"),
             'radio': Player('radio', default=True, dbus_name="org.mpris.xmms2"),
