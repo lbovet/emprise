@@ -1,6 +1,6 @@
 import logging
 logging.basicConfig()
-logging.root.setLevel(logging.INFO)
+logging.root.setLevel(logging.DEBUG)
 
 class Receiver(object):    
     def __init__(self):
@@ -33,13 +33,14 @@ class Receiver(object):
 class Player(object):
     current_player = None
     default_player = None
-    def __init__(self, name, default=False, dbus_name="<unknown>"):
+    def __init__(self, name, default=False, dbus_name=None, mpris_version=2):
         self.name=name
         self.next_player=None
         self.default=default
-        self.dbus_name=dbus_name
+        self.dbus_name=dbus_name if dbus_name is not None else name
         self.log = logging.getLogger(name)
         self.commander = None
+        self.mpris_version=mpris_version
         self.init()
     def init(self):
         pass
@@ -56,10 +57,10 @@ class Player(object):
         self.get_commander().playpause()
     def stop(self):
         self.log.info("Stop")
-        self.get_commander().stop()        
+        self.get_commander().pause()        
     def previous(self):
         self.log.info("Previous")
-        self.get_commander().prev()
+        self.get_commander().previous()
     def next(self):
         self.log.info("Next")
         self.get_commander().next()
@@ -69,9 +70,11 @@ class Player(object):
             import dbus
             import mpris_remote
             try:        
-                self.commander = mpris_remote.Commander2(dbus.SessionBus(), self.dbus_name)
+                constructor = mpris_remote.Commander2 if self.mpris_version==2 else mpris_remote.Commander1
+                self.commander = constructor(dbus.SessionBus(), self.dbus_name)
             except SystemExit:
                 raise Exception("Could not create commander")
+	return self.commander
     # Remote control
     def play_clicked(self):
         self.log.info( "Play clicked")
@@ -86,9 +89,9 @@ class Player(object):
         self.next()
     def up_clicked(self):
         self.log.info( "Up clicked")   
-        self.stop()
         self.next_player.activate()   
-        self.next_player.play()             
+        self.next_player.play()        
+     	self.stop()
     def down_clicked(self):
         self.log.info( "Down clicked") 
     def up_down_clicked(self):
@@ -121,9 +124,9 @@ class XBMC(Player):
         Player.default_player.activate()        
         Player.default_player.play()                
 
-players = { 'banshee' : Player('banshee', default=True, dbus_name="org.mpris.banshee"),
-            'radio': Player('radio', default=True, dbus_name="org.mpris.xmms2"),
-            'xbmc': XBMC('xbmc', dbus_name="org.mpris.xbmc") }
+players = { 'banshee' : Player('banshee', default=True),
+            'radio': Player('radio', default=True, dbus_name="xmms2", mpris_version=1),
+            'xbmc': XBMC('xbmc') }
 
 players['banshee'].next_player = players['radio']
 players['radio'].next_player = players['banshee']
@@ -132,3 +135,4 @@ Player.current_player = players['radio']
 Player.current_player.activate()
 
 Receiver()
+
