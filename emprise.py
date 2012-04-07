@@ -125,7 +125,7 @@ class XBMC(Player):
         Player.default_player.play()                
 
 players = { 'banshee' : Player('banshee', default=True),
-            'radio': Player('radio', default=True, dbus_name="xmms2", mpris_version=1),
+            'radio': Player('radio', default=True, dbus_name="vlc", mpris_version=1),
             'xbmc': XBMC('xbmc') }
 
 players['banshee'].next_player = players['radio']
