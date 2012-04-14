@@ -3,6 +3,11 @@ import os
 logging.basicConfig()
 logging.root.setLevel(logging.DEBUG)
 
+import dbus
+from dbus.mainloop.glib import DBusGMainLoop
+bus_loop = DBusGMainLoop(set_as_default=True)
+bus = dbus.SessionBus(mainloop=bus_loop)
+
 class Receiver(object):    
     def __init__(self):
         import gtk
@@ -32,6 +37,7 @@ class Receiver(object):
         Player.current_player.up_down_clicked()
 
 class Player(object):
+    players = None
     current_player = None
     default_player = None
     def __init__(self, name, default=False, dbus_name=None, mpris_version=2):
@@ -42,16 +48,28 @@ class Player(object):
         self.log = logging.getLogger(name)
         self.commander = None
         self.mpris_version=mpris_version
-        self.init()
-    def init(self):
-        pass
+        try:
+            self.get_commander()
+        except Exception, e:
+            import traceback
+            traceback.print_exc() 
+            print "Skipping commander creation for %s" % self.name
     def activate(self):
-        self.log.info("Activating %s", self.name)
-        Player.current_player=self
-        if self.default:
-            Player.default_player=self
-        from espeak import espeak
-        self.say(self.name+"!")
+        self.log.info("Activating %s", self.name)        
+        if not Player.current_player == self:
+            for player in Player.players.values():
+                if not player == self:
+                    try:
+                        player.stop()
+                    except:                        
+                        self.log.info("Could not stop %s" % player.name)
+                        import traceback
+                        traceback.print_exc()                                                
+            Player.current_player=self
+            if self.default:
+                Player.default_player=self
+            from espeak import espeak
+            self.say(self.name+"!")
         
     def play(self):
         self.log.info("Play")        
@@ -83,16 +101,26 @@ class Player(object):
         espeak.set_parameter(espeak.Parameter.Rate, 150)
         espeak.synth(message)
         
+    def connect(self):
+        obj = bus.get_object("org.mpris.MediaPlayer2."+self.dbus_name, "/org/mpris/MediaPlayer2")
+        obj.connect_to_signal("PropertiesChanged", self.handle_signal)
+
+    def handle_signal(self, interface, changed_props, invalidated_props):
+        if 'PlaybackStatus' in changed_props and changed_props['PlaybackStatus'] == 'Playing':
+            self.activate()
+
     def get_commander(self):
         if self.commander is None:
             import dbus
-            import mpris_remote
+            import mpris_remote            
             try:        
                 constructor = mpris_remote.Commander2 if self.mpris_version==2 else mpris_remote.Commander1
-                self.commander = constructor(dbus.SessionBus(), self.dbus_name)
+                self.commander = constructor(bus, self.dbus_name)
+                self.connect()
             except SystemExit:
                 raise Exception("Could not create commander")
-	return self.commander
+      	return self.commander
+ 
     # Remote control
     def play_clicked(self):        
         self.log.info( "Play clicked")
@@ -119,12 +147,28 @@ class Player(object):
     def up_down_clicked(self):
         self.log.info( "Up+Down clicked")    
         players['xbmc'].activate()
+        self.stop()
+
+'''Special dbus events for VLC'''
+class VLC(Player):
+    def __init__(self, name, default=False):         
+        Player.__init__(self, name, default, dbus_name="vlc", mpris_version=1)
+    def connect(self):
+        player = bus.get_object("org.mpris.vlc", "/Player")
+        player.connect_to_signal("TrackChange", self.handle_signal)
+        player.connect_to_signal("StatusChange", self.handle_signal)
+    def handle_signal(self, value):
+        if type(value) == dbus.Dictionary or value[0] == 0:
+            self.activate()
 
 '''Special control for XBMC'''
 class XBMC(Player):
-    def init(self):            
+    def __init__(self, name, default=False):            
         import virtkey
         self.v = virtkey.virtkey()
+        Player.__init__(self, name, dbus_name="xbmc")        
+    def stop(self):        
+        pass # avoid errors, not yet controlled through mpris
     def _click(self, keysym):
         self.v.press_keysym(keysym)
         self.v.release_keysym(keysym)
@@ -143,18 +187,16 @@ class XBMC(Player):
     def up_down_clicked(self):
         self._click(0x078) # X (STOP)
         self.log.info("Back to %s", Player.default_player.name)
-        Player.default_player.activate()        
-        Player.default_player.play()                
+        Player.default_player.activate()                     
 
-players = { 'banshee' : Player('Music Player', default=True, dbus_name="banshee"),
-            'radio': Player('Radio', default=True, dbus_name="vlc", mpris_version=1),
-            'xbmc': XBMC('Media Center') }
+Player.players = { 'banshee' : Player('Music Player', default=True, dbus_name="banshee"),
+                   'radio': VLC('Radio', default=True),
+                   'xbmc': XBMC('Media Center') }
 
-players['banshee'].next_player = players['radio']
-players['radio'].next_player = players['banshee']
+Player.players['banshee'].next_player = Player.players['radio']
+Player.players['radio'].next_player = Player.players['banshee']
 
-Player.current_player = players['radio']
-Player.current_player.activate()
+Player.players['banshee'].activate()
 
 Receiver()
 
