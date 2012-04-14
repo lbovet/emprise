@@ -1,4 +1,5 @@
 import logging
+import os
 logging.basicConfig()
 logging.root.setLevel(logging.DEBUG)
 
@@ -49,6 +50,9 @@ class Player(object):
         Player.current_player=self
         if self.default:
             Player.default_player=self
+        from espeak import espeak
+        self.say(self.name+"!")
+        
     def play(self):
         self.log.info("Play")        
         self.get_commander().play()
@@ -65,6 +69,20 @@ class Player(object):
         self.log.info("Next")
         self.get_commander().next()
 
+    def click_noise(self):
+        import playwav
+        import alsaaudio
+        import wave
+        f = wave.open(os.path.join(os.path.dirname(__file__),"click.wav"), 'rb')
+        device = alsaaudio.PCM(card="default")
+        playwav.play(device, f)
+        f.close()        
+    def say(self, message):
+        from espeak import espeak
+        espeak.set_parameter(espeak.Parameter.Pitch, 5)
+        espeak.set_parameter(espeak.Parameter.Rate, 150)
+        espeak.synth(message)
+        
     def get_commander(self):
         if self.commander is None:
             import dbus
@@ -76,17 +94,20 @@ class Player(object):
                 raise Exception("Could not create commander")
 	return self.commander
     # Remote control
-    def play_clicked(self):
+    def play_clicked(self):        
         self.log.info( "Play clicked")
         self.toggle()
+        self.click_noise()
     def left_right_clicked(self):
         self.log.info( "Left+Right clicked")        
     def left_clicked(self):
         self.log.info( "Left clicked")
         self.previous()
+        self.click_noise()
     def right_clicked(self):
         self.log.info( "Right clicked")
         self.next()
+        self.click_noise()
     def up_clicked(self):
         self.log.info( "Up clicked")   
         self.next_player.activate()   
@@ -94,6 +115,7 @@ class Player(object):
      	self.stop()
     def down_clicked(self):
         self.log.info( "Down clicked") 
+        self.say(self.name+"!")
     def up_down_clicked(self):
         self.log.info( "Up+Down clicked")    
         players['xbmc'].activate()
@@ -124,9 +146,9 @@ class XBMC(Player):
         Player.default_player.activate()        
         Player.default_player.play()                
 
-players = { 'banshee' : Player('banshee', default=True),
-            'radio': Player('radio', default=True, dbus_name="vlc", mpris_version=1),
-            'xbmc': XBMC('xbmc') }
+players = { 'banshee' : Player('Music Player', default=True, dbus_name="banshee"),
+            'radio': Player('Radio', default=True, dbus_name="vlc", mpris_version=1),
+            'xbmc': XBMC('Media Center') }
 
 players['banshee'].next_player = players['radio']
 players['radio'].next_player = players['banshee']
