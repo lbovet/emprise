@@ -168,7 +168,7 @@ class XBMC(Player):
         self.v = virtkey.virtkey()
         Player.__init__(self, name, dbus_name="xbmc")        
     def stop(self):        
-        pass # avoid errors, not yet controlled through mpris
+        self._click(0x078) # X (STOP)
     def _click(self, keysym):
         self.v.press_keysym(keysym)
         self.v.release_keysym(keysym)
@@ -185,7 +185,7 @@ class XBMC(Player):
     def down_clicked(self):
         self._click(0xFF54) # Down
     def up_down_clicked(self):
-        self._click(0x078) # X (STOP)
+        self.stop()
         self.log.info("Back to %s", Player.default_player.name)
         Player.default_player.activate()                     
 
