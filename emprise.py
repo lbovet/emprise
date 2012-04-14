@@ -2,6 +2,14 @@ import logging
 logging.basicConfig()
 logging.root.setLevel(logging.DEBUG)
 
+import dbus
+import gobject
+from dbus.mainloop.glib import DBusGMainLoop
+bus_loop = DBusGMainLoop(set_as_default=True)
+bus = dbus.SessionBus(mainloop=bus_loop)
+loop = gobject.MainLoop()
+
+
 class Receiver(object):    
     def __init__(self):
         import gtk
@@ -41,11 +49,14 @@ class Player(object):
         self.log = logging.getLogger(name)
         self.commander = None
         self.mpris_version=mpris_version
-        self.init()
-    def init(self):
-        pass
+        try:
+            self.get_commander()
+        except Exception, e:
+            import traceback
+            traceback.print_exc() 
+            print "Skipping commander creation for %s" % self.name
     def activate(self):
-        self.log.info("Activating %s", self.name)
+        self.log.info("Activating %s", self.name)        
         Player.current_player=self
         if self.default:
             Player.default_player=self
@@ -64,17 +75,22 @@ class Player(object):
     def next(self):
         self.log.info("Next")
         self.get_commander().next()
-
+    def connect(self):
+        self.commander.player.connect_to_signal("PropertyChanged", self.handle_signal)
     def get_commander(self):
         if self.commander is None:
             import dbus
-            import mpris_remote
+            import mpris_remote            
             try:        
                 constructor = mpris_remote.Commander2 if self.mpris_version==2 else mpris_remote.Commander1
-                self.commander = constructor(dbus.SessionBus(), self.dbus_name)
+                self.commander = constructor(bus, self.dbus_name)
+                self.connect()
             except SystemExit:
                 raise Exception("Could not create commander")
-	return self.commander
+      	return self.commander
+    def handle_signal(self, interface, changed_props, invalidated_props):
+        print "Signal: "+changed_props
+ 
     # Remote control
     def play_clicked(self):
         self.log.info( "Play clicked")
@@ -97,12 +113,22 @@ class Player(object):
     def up_down_clicked(self):
         self.log.info( "Up+Down clicked")    
         players['xbmc'].activate()
+        self.stop()
+
+class VLC(Player):
+    def __init__(self, name, default=False):         
+        Player.__init__(self, name, default, dbus_name="vlc", mpris_version=1)
+    def connect(self):
+        print "Connecting vlc"
+        player = bus.get_object("org.mpris.vlc", "/Player")
+        player.connect_to_signal("PropertyChanged", self.handle_signal)
 
 '''Special control for XBMC'''
 class XBMC(Player):
-    def init(self):            
+    def __init__(self, name, default=False):            
         import virtkey
         self.v = virtkey.virtkey()
+        Player.__init__(self, name)
     def _click(self, keysym):
         self.v.press_keysym(keysym)
         self.v.release_keysym(keysym)
@@ -125,7 +151,7 @@ class XBMC(Player):
         Player.default_player.play()                
 
 players = { 'banshee' : Player('banshee', default=True),
-            'radio': Player('radio', default=True, dbus_name="vlc", mpris_version=1),
+            'radio': VLC('radio', default=True),
             'xbmc': XBMC('xbmc') }
 
 players['banshee'].next_player = players['radio']
@@ -134,5 +160,7 @@ players['radio'].next_player = players['banshee']
 Player.current_player = players['radio']
 Player.current_player.activate()
 
-Receiver()
+loop.run()
+
+#Receiver()
 
